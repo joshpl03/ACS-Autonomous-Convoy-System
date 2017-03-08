@@ -36,7 +36,7 @@ void _mStop()
 void stateChange()
 {
   state = !state;
-  //digitalWrite(LED, state);
+  digitalWrite(LED, state);
 }
 
 /*Ultrasonic distance measurement Sub function*/
@@ -56,18 +56,17 @@ int Distance_test()
 
 void setup()
 {
+  myservo.attach(3);// attach servo on pin 3 to servo object
   // Calibration of IR sensors begins immediately
   int i;
-  for (i = 0; i < 100; i++)  // make the calibration take about 5 seconds
+  for (i = 0; i < 100; i++)  // make the calibration take about 2 seconds
   {
     qtr.calibrate();
     delay(20);
   }
 
-  myservo.attach(3);// attach servo on pin 3 to servo object
   pinMode(Echo, INPUT);
   pinMode(Trig, OUTPUT);
-  myservo.write(90);//setservo position according to scaled value
 
 
   pinMode(LED, OUTPUT);
@@ -83,12 +82,15 @@ void setup()
   //Serial.println("Calibration done!");
   digitalWrite(LED, HIGH);
   Motor_speed = Base_speed;
+
+  myservo.write(90);
 }
 
 /*working variables*/
 
 unsigned long lastTime = 0;
-double Kp = 2.5, Ki = 0.0, Kd = 3.5;
+//double Kp = 2.5, Ki = 0.0, Kd = 3.5;
+double Kp = 0.6, Ki = 0.0, Kd = 3;
 double Input, Output;
 double errSum, lastErr;
 double Setpoint = 15;
@@ -104,16 +106,8 @@ float KP_angle = 0.1, KD_angle = 0;
 void loop()
 {
 
-  middleDistance = Distance_test();
 
   //Serial.println(Motor_speed);
-
-
-
-  //  int num1, num2, num3;
-  //  num3 = digitalRead(10); // right sensor (1 means on line no led)
-  //  num2 = digitalRead(4); // middle sensor
-  //  num1 = digitalRead(2); // left sensor
 
 
   while (Serial.available() > 0) {
@@ -135,16 +129,14 @@ void loop()
   }
   inString = "";
 
-  // FIXME: Force set vehicle to 'f' state and stable motor speed to 90 (please use this as default speed for start in APP)
-  //  getstr = 'f';
-  //  Motor_speed = 90;
+
+  //Serial.println(Setpoint);
+
 
   if ( getstr == 'f' || (getstr == 'b') || (getstr == 'l') || (getstr == 'r') || (getstr == 's') || (getstr == 'A') )
     state_of_car = getstr;
 
 
-  //state_of_car = 'f';
-  // FIXME: always run this if statement unless vehicle is stopped
   if (state_of_car == 'f')
   {
     // float KP_line = 0.05, KD_line = 1;
@@ -153,67 +145,98 @@ void loop()
     //    Serial.print("position_line: ");
     //    Serial.print(position_line);
     int error_line = position_line - 3116;
-    //Serial.println("forward!");
-    //    Serial.print("        error_line: ");
-    //    Serial.print(error_line);
+    //        Serial.print("        error_line: ");
+    //        Serial.print(error_line);
     int set_speed = KP_line * error_line + KD_line * (error_line - lastErr_line);
     //    Serial.print("        set_speed: ");
     //    Serial.print(set_speed);
     lastErr_line = error_line;
     int m1Speed = Motor_speed + set_speed;
     int m2Speed = Motor_speed - set_speed;
-    //    if (m1Speed > 180)
-    //      m1Speed = 180;
-    //    if (m2Speed > 180)
-    //      m2Speed = 180;
-    //    if (m1Speed < 0)
-    //      m1Speed = 0;
-    //    if (m2Speed < 0)
-    //      m2Speed = 0;
-    m1Speed = constrain(m1Speed, 0, 180);
-    m2Speed = constrain(m2Speed, 0, 180);
+    //m1Speed = constrain(m1Speed, 0, 180);
+    //m2Speed = constrain(m2Speed, 0, 180);
     //    Serial.print("        m1Speed: ");
     //    Serial.print(m1Speed);
     //    Serial.print("        m2Speed: ");
     //    Serial.print(m2Speed);
     //    Serial.println("");
 
+
+
+
+    /*How long since we last calculated*/
+    unsigned long now = millis();
+    double timeChange = (double)(now - lastTime);
+
+
+
+    /*Compute all the working error variables*/
+    middleDistance = Distance_test();
+    //  Serial.print("middleDistance: ");
+    //  Serial.print(middleDistance);
+    Input = middleDistance;
+    double error = Input - Setpoint;
+    //  Serial.print("        error: ");
+    //  Serial.print(error);
+    errSum += (error * timeChange);
+    double dErr = (error - lastErr) / timeChange;
+
+    /*Compute PID Output*/
+    Output = Kp * error + Ki * errSum + Kd * dErr;
+    //Output = constrain(Output,-200,20);
+    //  Serial.print("        Output: ");
+    //  Serial.print(Output);
+    //  Serial.println("");
+
+    /*Remember some variables for next time*/
+    lastErr = error;
+    lastTime = now;
+
+    m1Speed = m1Speed + Output;
+    m2Speed = m2Speed + Output;
+    m1Speed = constrain(m1Speed, 0, 180);
+    m2Speed = constrain(m2Speed, 0, 180);
+
+    //        Serial.print("        m1Speed: ");
+    //        Serial.print(m1Speed);
+    //        Serial.print("        m2Speed: ");
+    //        Serial.print(m2Speed);
+    //        Serial.println("");
+
+
     analogWrite(ENA, m1Speed);
     analogWrite(ENB, m2Speed);
-    digitalWrite(in1, HIGH);
-    digitalWrite(in2, LOW);
-    digitalWrite(in3, LOW);
-    digitalWrite(in4, HIGH);
 
-    //Serial.println(angle);
-    //delay(50);
-    int angle = int(double(position_line) / 7000 * 180);
-    int error_angle = angle - last_angle;
-    int set_angle = KP_angle * error_angle + KD_angle * (error_angle - lastErr_angle);
-    lastErr_angle = error_angle;
-    angle = last_angle + set_angle;
-    last_angle = angle;
-    myservo.write(angle);
+    if (middleDistance <= Setpoint)
+    {
+      digitalWrite(in1, LOW);
+      digitalWrite(in2, LOW);
+      digitalWrite(in3, LOW);
+      digitalWrite(in4, LOW);
+      //    Serial.println("Stop");
+    }
+    else
+    {
+      digitalWrite(in1, HIGH);
+      digitalWrite(in2, LOW);
+      digitalWrite(in3, LOW);
+      digitalWrite(in4, HIGH);
+    }
 
+    //Serial.println("forward!");
 
+    //    //Serial.println(angle);
+    //    int angle = int(double(position_line) / 7000 * 180);
+    //    int error_angle = angle - last_angle;
+    //    int set_angle = KP_angle * error_angle + KD_angle * (error_angle - lastErr_angle);
+    //    lastErr_angle = error_angle;
+    //    angle = last_angle + set_angle;
+    //    last_angle = angle;
+    //    myservo.write(angle);
+    //    delay(50);
 
 
   }
-  //  else if (state_of_car == 'b')
-  //  {
-  //    _mBack();
-  //    delay(200);
-  //  }
-  //  else if (state_of_car == 'l')
-  //  {
-  //    _mleft();
-  //    delay(200);
-  //  }
-  //  else if (state_of_car == 'r')
-  //  {
-  //    _mright();
-  //    delay(200);
-  //  }
   else if (state_of_car == 's')
   {
     _mStop();
@@ -223,11 +246,7 @@ void loop()
     stateChange();
   }
 
-
-
 }
-
-
 
 
 
