@@ -26,7 +26,7 @@ int Motor_speed = 0;
 int PID_Speed_increase = 0;
 
 char state_of_car = 'm';
-
+int temp_motor_speed = 80;
 void _mStop()
 {
   digitalWrite(ENA, LOW);
@@ -96,15 +96,22 @@ String inString;
 
 // Line-Following working variables
 int lastErr_line = 0;
-float KP_line = 0.2, KD_line = 1;
+float KP_line = 0.05, KD_line = 0.07;
+bool PD_straight = true;
+long deb_delay = 2000;
+long last_deb = 0;
+
 int lastErr_angle = 0;
 int last_angle = 90;
 float KP_angle = 0.1, KD_angle = 0;
-
+unsigned long time_test = 0;
 void loop()
 {
-
-  middleDistance = Distance_test();
+  //unsigned long time_last_test = time_test;
+ //time_test = millis();
+  //Serial.println("Delay: ");
+ // Serial.println(time_test - time_last_test);
+  //middleDistance = Distance_test();
 
   //Serial.println(Motor_speed);
 
@@ -127,8 +134,11 @@ void loop()
   }
   int temp_value = inString.toInt();
 
-  if ( (temp_value >= 60) && (temp_value <= 180))
+  if ( (temp_value >= 60) && (temp_value <= 180)){
+    
     Motor_speed = temp_value;
+    temp_motor_speed = Motor_speed;
+  }
   if ( (temp_value >= 1000) && (temp_value <= 1070)) {
     temp_value = temp_value - 1000;
     Setpoint = temp_value;
@@ -142,16 +152,57 @@ void loop()
   if ( getstr == 'f' || (getstr == 'b') || (getstr == 'l') || (getstr == 'r') || (getstr == 's') || (getstr == 'A') )
     state_of_car = getstr;
 
-
   //state_of_car = 'f';
   // FIXME: always run this if statement unless vehicle is stopped
   if (state_of_car == 'f')
   {
+//    if (Motor_speed >= 105)
+//      KP_line = 0.01 , KD_line = 0.012;
+//    else if (Motor_speed < 105)
+//      KP_line = 0.005, KD_line = 0.007;
+
     // float KP_line = 0.05, KD_line = 1;
-    unsigned int sensors[3];
+    unsigned int sensors[8];
     int position_line = qtr.readLine(sensors);
-    //    Serial.print("position_line: ");
-    //    Serial.print(position_line);
+    //        Serial.print("position_line: ");
+    //        Serial.println(position_line);
+    unsigned int sensor_values[8];
+    qtr.readCalibrated(sensor_values);
+
+    int j, total = 0;
+    for (j = 0; j < 8; j++)  // make the calibration take about 5 seconds
+    {
+      //      Serial.print("Sen")
+      //      Serial.print(j);
+      //      Serial.print(": ");
+      //      Serial.print(sensors[j]);
+      //      Serial.print("  ");
+      total += sensors[j];
+    }
+    //    Serial.println("");
+    int avg = total / 8;
+    
+//Serial.print(millis() - last_deb);
+//Serial.print("  ");
+    if ( (millis() - last_deb) > deb_delay )
+    {
+      if (avg > 900 && PD_straight)
+      {
+        Motor_speed = 65;
+        PD_straight = !PD_straight;
+        last_deb = millis();
+      }
+      else if (avg > 900 && !PD_straight)
+      {
+        Motor_speed = temp_motor_speed;
+
+        PD_straight = !PD_straight;
+        last_deb = millis();
+      }
+    }
+
+//    Serial.println(KP_line);
+
     int error_line = position_line - 3116;
     //Serial.println("forward!");
     //    Serial.print("        error_line: ");
@@ -187,13 +238,13 @@ void loop()
 
     //Serial.println(angle);
     //delay(50);
-    int angle = int(double(position_line) / 7000 * 180);
-    int error_angle = angle - last_angle;
-    int set_angle = KP_angle * error_angle + KD_angle * (error_angle - lastErr_angle);
-    lastErr_angle = error_angle;
-    angle = last_angle + set_angle;
-    last_angle = angle;
-    myservo.write(angle);
+    //    int angle = int(double(position_line) / 7000 * 180);
+    //    int error_angle = angle - last_angle;
+    //    int set_angle = KP_angle * error_angle + KD_angle * (error_angle - lastErr_angle);
+    //    lastErr_angle = error_angle;
+    //    angle = last_angle + set_angle;
+    //    last_angle = angle;
+    //    myservo.write(angle);
 
 
 

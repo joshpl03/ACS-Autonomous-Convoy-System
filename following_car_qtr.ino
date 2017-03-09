@@ -26,6 +26,7 @@ int Motor_speed = 0;
 int PID_Speed_increase = 0;
 
 char state_of_car = 'm';
+int temp_motor_speed = 80;
 
 void _mStop()
 {
@@ -89,19 +90,25 @@ void setup()
 /*working variables*/
 
 unsigned long lastTime = 0;
-//double Kp = 2.5, Ki = 0.0, Kd = 3.5;
-double Kp = 0.6, Ki = 0.0, Kd = 3;
+double Kp = 2.5, Ki = 0.0, Kd = 3.5;
+//double Kp = 0.6, Ki = 0.0, Kd = 3;
 double Input, Output;
 double errSum, lastErr;
 double Setpoint = 15;
 String inString;
+bool PD_straight = true;
+long deb_delay = 2000;
+long last_deb = 0;
+
 
 // Line-Following working variables
 int lastErr_line = 0;
-float KP_line = 0.2, KD_line = 1;
+float KP_line = 0.05, KD_line = 0.07;
 int lastErr_angle = 0;
 int last_angle = 90;
 float KP_angle = 0.1, KD_angle = 0;
+int m1Speed = 0;
+int m2Speed = 0;
 
 void loop()
 {
@@ -121,8 +128,13 @@ void loop()
   }
   int temp_value = inString.toInt();
 
-  if ( (temp_value >= 60) && (temp_value <= 180))
+
+  if ( (temp_value >= 60) && (temp_value <= 180)){
+    
     Motor_speed = temp_value;
+    temp_motor_speed = Motor_speed;
+  }
+  
   if ( (temp_value >= 1000) && (temp_value <= 1070)) {
     temp_value = temp_value - 1000;
     Setpoint = temp_value;
@@ -136,12 +148,81 @@ void loop()
   if ( getstr == 'f' || (getstr == 'b') || (getstr == 'l') || (getstr == 'r') || (getstr == 's') || (getstr == 'A') )
     state_of_car = getstr;
 
+  state_of_car = 'f';
 
   if (state_of_car == 'f')
   {
+    
+    
+        /*Compute all the working error variables*/
+    middleDistance = Distance_test();
+    Input = middleDistance;
+    double error = Input - Setpoint;
+
+    unsigned long now = millis();
+    double timeChange = (double)(now - lastTime);
+
+
+    errSum += (error * timeChange);
+    double dErr = (error - lastErr) / timeChange;
+
+
+
+    /*Compute PID Output*/
+    Output = Kp * error + Ki * errSum + Kd * dErr;
+    lastErr = error;
+    lastTime = now;
+
+Motor_speed = Base_speed + Output;
+    
+    
+    
+    
     // float KP_line = 0.05, KD_line = 1;
-    unsigned int sensors[3];
+    unsigned int sensors[8];
     int position_line = qtr.readLine(sensors);
+    //        Serial.print("position_line: ");
+    //        Serial.println(position_line);
+    unsigned int sensor_values[8];
+    qtr.readCalibrated(sensor_values);
+
+    int j, total = 0;
+    for (j = 0; j < 8; j++)  // make the calibration take about 5 seconds
+    {
+      //      Serial.print("Sen");
+      //      Serial.print(j);
+      //      Serial.print(": ");
+      //      Serial.print(sensors[j]);
+      //      Serial.print("  ");
+      total += sensors[j];
+    }
+    //    Serial.println("");
+    int avg = total / 8;
+    
+//Serial.print(millis() - last_deb);
+//Serial.print("  ");
+    if ( (millis() - last_deb) > deb_delay )
+    {
+      if (avg > 900 && PD_straight)
+      {
+        Motor_speed = 65;
+        PD_straight = !PD_straight;
+        last_deb = millis();
+      }
+      else if (avg > 900 && !PD_straight)
+      {
+        Motor_speed = temp_motor_speed;
+
+        PD_straight = !PD_straight;
+        last_deb = millis();
+      }
+    }
+
+
+    if(!PD_straight)
+    Motor_speed = 65;
+    
+    
     //    Serial.print("position_line: ");
     //    Serial.print(position_line);
     int error_line = position_line - 3116;
@@ -151,58 +232,22 @@ void loop()
     //    Serial.print("        set_speed: ");
     //    Serial.print(set_speed);
     lastErr_line = error_line;
-    int m1Speed = Motor_speed + set_speed;
-    int m2Speed = Motor_speed - set_speed;
-    //m1Speed = constrain(m1Speed, 0, 180);
-    //m2Speed = constrain(m2Speed, 0, 180);
-    //    Serial.print("        m1Speed: ");
-    //    Serial.print(m1Speed);
-    //    Serial.print("        m2Speed: ");
-    //    Serial.print(m2Speed);
-    //    Serial.println("");
+    m1Speed = Motor_speed + set_speed;
+    m2Speed = Motor_speed - set_speed;
+
+
+
+    m1Speed = constrain(m1Speed, 0, 180);
+    m2Speed = constrain(m2Speed, 0, 180);
 
 
 
 
     /*How long since we last calculated*/
-    unsigned long now = millis();
-    double timeChange = (double)(now - lastTime);
 
 
 
-    /*Compute all the working error variables*/
-    middleDistance = Distance_test();
-    //  Serial.print("middleDistance: ");
-    //  Serial.print(middleDistance);
-    Input = middleDistance;
-    double error = Input - Setpoint;
-    //  Serial.print("        error: ");
-    //  Serial.print(error);
-    errSum += (error * timeChange);
-    double dErr = (error - lastErr) / timeChange;
-
-    /*Compute PID Output*/
-    Output = Kp * error + Ki * errSum + Kd * dErr;
-    //Output = constrain(Output,-200,20);
-    //  Serial.print("        Output: ");
-    //  Serial.print(Output);
-    //  Serial.println("");
-
-    /*Remember some variables for next time*/
-    lastErr = error;
-    lastTime = now;
-
-    m1Speed = m1Speed + Output;
-    m2Speed = m2Speed + Output;
-    m1Speed = constrain(m1Speed, 0, 180);
-    m2Speed = constrain(m2Speed, 0, 180);
-
-    //        Serial.print("        m1Speed: ");
-    //        Serial.print(m1Speed);
-    //        Serial.print("        m2Speed: ");
-    //        Serial.print(m2Speed);
-    //        Serial.println("");
-
+    
 
     analogWrite(ENA, m1Speed);
     analogWrite(ENB, m2Speed);
