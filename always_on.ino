@@ -4,7 +4,7 @@
 
 
 //DETERMINES IF CAR STARTS ON OR NOT
-char state_of_car = 'm';
+char state_of_car = 'f';
 
 
 QTRSensorsAnalog qtr((unsigned char[]) {
